@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batch EXIF Remover</title>
+    <style>
+        :root {
+            --primary: #007AFF;
+            --background: #f2f2f7;
+            --surface: #ffffff;
+            --text: #1c1c1e;
+            --border: #c6c6c8;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--background);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: var(--surface);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            box-sizing: border-box;
+        }
+
+        h1 {
+            text-align: center;
+            margin-top: 0;
+            font-size: 1.8rem;
+        }
+
+        p.subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 24px;
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+            background: #fafafa;
+        }
+
+        .drop-zone:hover, .drop-zone.dragover {
+            background: #eef5ff;
+            border-color: var(--primary);
+        }
+
+        .drop-zone p {
+            margin: 0;
+            font-size: 1.1rem;
+            color: #555;
+            pointer-events: none;
+        }
+
+        .drop-zone span {
+            display: block;
+            font-size: 0.9rem;
+            color: #888;
+            margin-top: 8px;
+        }
+
+        /* Hide the actual file input */
+        #file-input {
+            display: none;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 24px 0 16px;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            background: var(--border);
+            cursor: not-allowed;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .card {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: var(--surface);
+        }
+
+        .card img {
+            width: 100%;
+            height: 140px;
+            object-fit: cover;
+            display: block;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card .info {
+            padding: 10px;
+            font-size: 0.85rem;
+            text-align: center;
+        }
+
+        .card a {
+            display: block;
+            text-align: center;
+            background: #f0f0f0;
+            color: var(--text);
+            text-decoration: none;
+            padding: 10px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .card a:hover {
+            background: #e0e0e0;
+        }
+
+        /* Mobile adjustments */
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+            
+            .gallery {
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            }
+            
+            .controls {
+                flex-direction: column;
+                gap: 12px;
+            }
+            
+            button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Batch EXIF Remover</h1>
+    <p class="subtitle">100% private. Processing happens entirely on your device.</p>
+
+    <div class="drop-zone" id="drop-zone">
+        <p>Tap to Select Photos</p>
+        <span>or drag & drop them here</span>
+        <input type="file" id="file-input" multiple accept="image/jpeg, image/png, image/webp">
+    </div>
+
+    <div class="controls">
+        <span id="status-text">No images processed yet.</span>
+        <button id="download-all-btn" disabled>Download All</button>
+    </div>
+
+    <div class="gallery" id="gallery"></div>
+</div>
+
+<script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const gallery = document.getElementById('gallery');
+    const statusText = document.getElementById('status-text');
+    const downloadAllBtn = document.getElementById('download-all-btn');
+
+    let processedFiles = [];
+
+    // --- Event Listeners for Drag & Drop ---
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            handleFiles(e.dataTransfer.files);
+        }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFiles(e.target.files);
+        }
+    });
+
+    // --- File Processing ---
+    async function handleFiles(files) {
+        statusText.textContent = `Processing ${files.length} image(s)...`;
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            // Skip non-image files
+            if (!file.type.startsWith('image/')) continue;
+            
+            await processImage(file);
+        }
+        
+        statusText.textContent = `Successfully scrubbed ${processedFiles.length} image(s).`;
+        if (processedFiles.length > 0) {
+            downloadAllBtn.disabled = false;
+        }
+        
+        // Reset file input so the same files can be selected again if needed
+        fileInput.value = '';
+    }
+
+    function processImage(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Create a canvas with the exact dimensions of the image
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Drawing the image to the canvas strips all EXIF metadata
+                    ctx.drawImage(img, 0, 0);
+                    
+                    // Convert back to Blob (High quality JPEG)
+                    canvas.toBlob((blob) => {
+                        const cleanUrl = URL.createObjectURL(blob);
+                        
+                        // Create a safe filename (append _clean)
+                        const originalName = file.name;
+                        const dotIndex = originalName.lastIndexOf('.');
+                        const newName = originalName.substring(0, dotIndex) + '_clean.jpg';
+                        
+                        // Save to our array for the "Download All" feature
+                        processedFiles.push({ url: cleanUrl, name: newName });
+                        
+                        // Add to UI
+                        addCardToGallery(cleanUrl, newName, blob.size);
+                        resolve();
+                        
+                    }, 'image/jpeg', 1.0); // 1.0 = Maximum quality
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // --- UI Updates ---
+    function addCardToGallery(imgUrl, fileName, fileSize) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        
+        const sizeKB = (fileSize / 1024).toFixed(1);
+        
+        card.innerHTML = `
+            <img src="${imgUrl}" alt="${fileName}">
+            <div class="info">
+                <strong>EXIF Removed</strong><br>
+                ${sizeKB} KB
+            </div>
+            <a href="${imgUrl}" download="${fileName}">Download</a>
+        `;
+        gallery.appendChild(card);
+    }
+
+    // --- Download All Feature ---
+    downloadAllBtn.addEventListener('click', () => {
+        // Trigger downloads with a slight delay between them to prevent the browser from blocking multiple pop-ups
+        processedFiles.forEach((file, index) => {
+            setTimeout(() => {
+                const link = document.createElement('a');
+                link.href = file.url;
+                link.download = file.name;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }, index * 200); 
+        });
+    });
+</script>
+
+</body>
+</html>
