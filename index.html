@@ -270,10 +270,10 @@
                     canvas.toBlob((blob) => {
                         const cleanUrl = URL.createObjectURL(blob);
                         
-                        // Create a safe filename (append _clean)
+                        // Create a safe filename (append )
                         const originalName = file.name;
                         const dotIndex = originalName.lastIndexOf('.');
-                        const newName = originalName.substring(0, dotIndex) + '_clean.jpg';
+                        const newName = originalName.substring(0, dotIndex) + '.jpg';
                         
                         // Save to our array for the "Download All" feature
                         processedFiles.push({ url: cleanUrl, name: newName });
