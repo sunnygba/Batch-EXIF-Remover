@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Batch EXIF Remover</title>
+    <!-- Include JSZip for creating zip archives -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root {
             --primary: #007AFF;
@@ -75,7 +77,6 @@
             margin-top: 8px;
         }
 
-        /* Hide the actual file input */
         #file-input {
             display: none;
         }
@@ -153,7 +154,6 @@
             background: #e0e0e0;
         }
 
-        /* Mobile adjustments */
         @media (max-width: 600px) {
             .container {
                 padding: 20px;
@@ -178,7 +178,7 @@
 
 <div class="container">
     <h1>Batch EXIF Remover</h1>
-    <p class="subtitle"></p>
+    <p class="subtitle">Strip metadata and download photos cleanly</p>
 
     <div class="drop-zone" id="drop-zone">
         <p>Tap to Select Photos</p>
@@ -187,8 +187,8 @@
     </div>
 
     <div class="controls">
-        <span id="status-text">No images processed yet.</span>
-        <button id="download-all-btn" disabled>Download All</button>
+        <span id="status-text">No images processed yet.[cite: 1]</span>
+        <button id="download-all-btn" disabled>Download All (ZIP)</button>
     </div>
 
     <div class="gallery" id="gallery"></div>
@@ -203,7 +203,6 @@
 
     let processedFiles = [];
 
-    // --- Event Listeners for Drag & Drop ---
     dropZone.addEventListener('click', () => fileInput.click());
 
     dropZone.addEventListener('dragover', (e) => {
@@ -229,15 +228,12 @@
         }
     });
 
-    // --- File Processing ---
     async function handleFiles(files) {
         statusText.textContent = `Processing ${files.length} image(s)...`;
         
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            // Skip non-image files
             if (!file.type.startsWith('image/')) continue;
-            
             await processImage(file);
         }
         
@@ -246,7 +242,6 @@
             downloadAllBtn.disabled = false;
         }
         
-        // Reset file input so the same files can be selected again if needed
         fileInput.value = '';
     }
 
@@ -257,32 +252,27 @@
             reader.onload = (e) => {
                 const img = new Image();
                 img.onload = () => {
-                    // Create a canvas with the exact dimensions of the image
                     const canvas = document.createElement('canvas');
                     canvas.width = img.width;
                     canvas.height = img.height;
                     const ctx = canvas.getContext('2d');
                     
-                    // Drawing the image to the canvas strips all EXIF metadata
                     ctx.drawImage(img, 0, 0);
                     
-                    // Convert back to Blob (High quality JPEG)
                     canvas.toBlob((blob) => {
                         const cleanUrl = URL.createObjectURL(blob);
                         
-                        // Create a safe filename (append )
                         const originalName = file.name;
                         const dotIndex = originalName.lastIndexOf('.');
                         const newName = originalName.substring(0, dotIndex) + '.jpg';
                         
-                        // Save to our array for the "Download All" feature
-                        processedFiles.push({ url: cleanUrl, name: newName });
+                        // Store blob reference alongside url and name for zip generation
+                        processedFiles.push({ url: cleanUrl, name: newName, blob: blob });
                         
-                        // Add to UI
                         addCardToGallery(cleanUrl, newName, blob.size);
                         resolve();
                         
-                    }, 'image/jpeg', 1.0); // 1.0 = Maximum quality
+                    }, 'image/jpeg', 1.0);
                 };
                 img.src = e.target.result;
             };
@@ -290,7 +280,6 @@
         });
     }
 
-    // --- UI Updates ---
     function addCardToGallery(imgUrl, fileName, fileSize) {
         const card = document.createElement('div');
         card.className = 'card';
@@ -308,19 +297,41 @@
         gallery.appendChild(card);
     }
 
-    // --- Download All Feature ---
-    downloadAllBtn.addEventListener('click', () => {
-        // Trigger downloads with a slight delay between them to prevent the browser from blocking multiple pop-ups
-        processedFiles.forEach((file, index) => {
-            setTimeout(() => {
-                const link = document.createElement('a');
-                link.href = file.url;
-                link.download = file.name;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            }, index * 200); 
+    // --- Updated Download All Feature (ZIP Format) ---
+    downloadAllBtn.addEventListener('click', async () => {
+        if (processedFiles.length === 0) return;
+
+        downloadAllBtn.disabled = true;
+        statusText.textContent = 'Generating ZIP file...';
+
+        const zip = new JSZip();
+        
+        // Add each processed image blob into the zip folder
+        processedFiles.forEach((file) => {
+            zip.file(file.name, file.blob);
         });
+
+        try {
+            // Generate the zip file asynchronously
+            const content = await zip.generateAsync({ type: 'blob' });
+            
+            // Create a temporary anchor to trigger the download of the zip
+            const zipUrl = URL.createObjectURL(content);
+            const link = document.createElement('a');
+            link.href = zipUrl;
+            link.download = 'cleaned_photos.zip';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            setTimeout(() => URL.revokeObjectURL(zipUrl), 1000);
+            statusText.textContent = `Successfully downloaded ${processedFiles.length} image(s) as a ZIP.`;
+        } catch (error) {
+            statusText.textContent = 'Error generating ZIP file.';
+            console.error(error);
+        } finally {
+            downloadAllBtn.disabled = false;
+        }
     });
 </script>
 
